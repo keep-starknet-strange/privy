@@ -1,0 +1,32 @@
+{
+  "name": "privy-starknet-demo",
+  "version": "1.0.0",
+  "description": "React Native demo showcasing Starknet integration with Privy wallets and AVNU gasless transactions",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "demo": "cd apps/demo && npm start",
+    "demo:ios": "cd apps/demo && npm run ios",
+    "demo:android": "cd apps/demo && npm run android",
+    "wallet:build": "cd packages/starknet-privy-wallet && npm run build",
+    "wallet:test": "cd packages/starknet-privy-wallet && npm test",
+    "contract:build": "cd contracts && scarb build",
+    "contract:test": "cd contracts && scarb test",
+    "contract:deploy": "cd contracts && npm run deploy:sepolia"
+  },
+  "keywords": [
+    "react-native",
+    "starknet",
+    "privy",
+    "blockchain",
+    "web3",
+    "wallet",
+    "avnu",
+    "paymaster"
+  ],
+  "author": "",
+  "license": "MIT"
+}
