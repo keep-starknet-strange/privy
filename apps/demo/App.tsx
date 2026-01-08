@@ -21,18 +21,8 @@ function AppContent() {
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-
-  // Debug logging
-  console.log('Privy state:', {
-    isReady,
-    hasUser: !!user,
-    loginState: state,
-    walletStatus: wallet.status,
-    walletAddress: wallet.address,
-    walletAccount: wallet.account,
-    userLinkedAccounts: user?.linked_accounts?.length
-  });
-
+  const [starknetAccount, setStarknetAccount] = useState<any>(null);
+  const [starknetBalance, setStarknetBalance] = useState<string | null>(null);
 
   // Create embedded wallet after login
   useEffect(() => {
@@ -44,6 +34,147 @@ function AppContent() {
       });
     }
   }, [user, wallet.status]);
+
+  // Derive Starknet account from Ethereum wallet
+  useEffect(() => {
+    if (wallet.status === 'connected' && wallet.account?.address && !starknetAccount) {
+      console.log('Deriving Starknet account from Ethereum wallet...');
+
+      const deriveStarknetAccount = async () => {
+        try {
+          const rpcUrl = process.env.EXPO_PUBLIC_STARKNET_RPC_URL || 'https://starknet-sepolia.g.alchemy.com/v2/demo';
+
+          // TEMPORARY: For demo, create a read-only account
+          // Using Ethereum address as placeholder for Starknet address
+          const demoAccountAddress = '0x' + wallet.account!.address.slice(2).padStart(64, '0');
+
+          // Create mock account with RPC methods
+          const mockAccount = {
+            address: demoAccountAddress,
+            rpcUrl,
+            // Simple RPC call method
+            callRpc: async function(method: string, params: any[]) {
+              console.log('RPC call:', method, 'to', this.rpcUrl);
+              try {
+                const response = await fetch(this.rpcUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method,
+                    params,
+                    id: 1,
+                  }),
+                });
+
+                if (!response.ok) {
+                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                  throw new Error(data.error.message);
+                }
+                return data.result;
+              } catch (err: any) {
+                console.error('RPC call failed:', err.message);
+                throw err;
+              }
+            },
+            getBalance: async function() {
+              try {
+                const result = await this.callRpc('starknet_getBalance', [this.address]);
+                return result;
+              } catch (err) {
+                console.log('Balance check (expected to fail for non-deployed account)');
+                return '0x0';
+              }
+            },
+          };
+
+          console.log('✅ Starknet read-only connection created');
+          setStarknetAccount(mockAccount);
+
+        } catch (err: any) {
+          console.error('Failed to create Starknet connection:', err);
+          setError('Failed to connect to Starknet: ' + err.message);
+        }
+      };
+
+      deriveStarknetAccount();
+    }
+  }, [wallet.status, wallet.account, starknetAccount]);
+
+  // Fetch Starknet balance
+  useEffect(() => {
+    if (starknetAccount) {
+      console.log('Fetching Starknet balance...');
+
+      const fetchBalance = async () => {
+        try {
+          const balanceHex = await starknetAccount.getBalance();
+          const balanceWei = BigInt(balanceHex);
+          const balanceInEth = (Number(balanceWei) / 1e18).toFixed(6);
+          setStarknetBalance(balanceInEth);
+        } catch (err: any) {
+          console.error('Failed to fetch balance:', err);
+          setStarknetBalance('0.000000');
+        }
+      };
+
+      fetchBalance();
+    }
+  }, [starknetAccount]);
+
+  // Read on-chain counter value
+  useEffect(() => {
+    if (starknetAccount) {
+      console.log('Reading on-chain counter...');
+
+      const readCounter = async () => {
+        try {
+          const contractAddress = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS;
+          if (!contractAddress) {
+            console.error('Contract address not configured');
+            return;
+          }
+
+          // Call get_count function using RPC
+          // Actual selector from deployed contract
+          const result = await starknetAccount.callRpc('starknet_call', [
+            {
+              contract_address: contractAddress,
+              entry_point_selector: '0x20694f8b2b8fdf89588fd05fd4abdb2e3e7d9181a68d8c34872d0b2f8562aad', // get_count
+              calldata: [],
+            },
+            'latest',
+          ]);
+
+          // Result is an array of felt252 values in hex
+          if (!result || !Array.isArray(result) || result.length === 0) {
+            console.log('No result data, using 0');
+            setCount(0);
+            return;
+          }
+
+          const counterValue = parseInt(result[0], 16);
+          console.log('✅ Counter value read from blockchain:', counterValue);
+          setCount(counterValue);
+        } catch (err: any) {
+          console.error('Failed to read counter:', err);
+          if (err.message.includes('429')) {
+            console.log('⚠️  RPC rate limited. Get your own Alchemy API key at https://www.alchemy.com/');
+            console.log('⚠️  Add to .env: EXPO_PUBLIC_STARKNET_RPC_URL=https://starknet-sepolia.g.alchemy.com/v2/YOUR_KEY');
+          }
+          // For demo, show 0 when rate limited
+          setCount(0);
+        }
+      };
+
+      readCounter();
+    }
+  }, [starknetAccount]);
 
   // Show loading while Privy initializes
   if (!isReady) {
@@ -160,12 +291,7 @@ function AppContent() {
 
       {/* Wallet Info */}
       <View style={styles.walletCard}>
-        <Text style={styles.walletLabel}>
-          {wallet.status === 'creating' && 'Creating Wallet...'}
-          {wallet.status === 'connected' && 'Ethereum Wallet'}
-          {wallet.status === 'not-created' && 'No Wallet Yet'}
-          {wallet.status === 'disconnected' && 'Disconnected'}
-        </Text>
+        <Text style={styles.walletLabel}>Ethereum Wallet</Text>
         {(() => {
           // Try to get address from wallet.account or wallet.address
           const address = wallet.account?.address || wallet.address;
@@ -186,6 +312,19 @@ function AppContent() {
         <Text style={styles.walletEmail}>{user?.email?.address || user?.google?.email || 'Logged in'}</Text>
       </View>
 
+      {/* Starknet Info */}
+      {starknetAccount && (
+        <View style={styles.walletCard}>
+          <Text style={styles.walletLabel}>Starknet Account</Text>
+          <Text style={styles.walletAddress}>
+            {starknetAccount.address.slice(0, 6)}...{starknetAccount.address.slice(-4)}
+          </Text>
+          <Text style={styles.walletEmail}>
+            Balance: {starknetBalance || 'Loading...'} ETH
+          </Text>
+        </View>
+      )}
+
       {/* Counter */}
       <View style={styles.counterContainer}>
         <Text style={styles.count}>{count}</Text>
@@ -194,11 +333,14 @@ function AppContent() {
       <TouchableOpacity
         style={styles.button}
         onPress={() => setCount(count + 1)}
+        disabled={true}
       >
-        <Text style={styles.buttonText}>Click Me!</Text>
+        <Text style={styles.buttonText}>Coming Soon: Increment On-Chain</Text>
       </TouchableOpacity>
 
-      <Text style={styles.hint}>Local counter (not on-chain yet)</Text>
+      <Text style={styles.hint}>
+        {starknetAccount ? 'Reading from blockchain...' : 'Waiting for Starknet account...'}
+      </Text>
 
       {/* Logout Button */}
       <TouchableOpacity style={styles.logoutButton} onPress={logout}>

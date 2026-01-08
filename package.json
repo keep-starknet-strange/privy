@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "demo": "cd apps/demo && npm start",
-    "demo:ios": "cd apps/demo && npm run ios",
-    "demo:android": "cd apps/demo && npm run android",
+    "demo:ios": "cd apps/demo && expo run ios --device",
+    "demo:android": "cd apps/demo && expo run:android --device",
     "wallet:build": "cd packages/starknet-privy-wallet && npm run build",
     "wallet:test": "cd packages/starknet-privy-wallet && npm test",
     "contract:build": "cd contracts && scarb build",

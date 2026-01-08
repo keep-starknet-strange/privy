@@ -1,4 +1,7 @@
-// Import polyfills FIRST - required for Privy
+// Import polyfills FIRST - required for Privy and Starknet
+import { Buffer } from 'buffer';
+global.Buffer = Buffer;
+
 import 'fast-text-encoding';
 import 'react-native-get-random-values';
 import '@ethersproject/shims';
