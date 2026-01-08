@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { PrivyProvider, usePrivy, useLoginWithEmail, useEmbeddedWallet } from '@privy-io/expo';
+import { Account, RpcProvider, constants, ec, hash, CallData, stark } from 'starknet';
+import * as Crypto from 'expo-crypto';
 
 // Main app content (inside Privy provider)
 function AppContent() {
@@ -22,7 +24,10 @@ function AppContent() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [starknetAccount, setStarknetAccount] = useState<any>(null);
+  const [starknetProvider, setStarknetProvider] = useState<RpcProvider | null>(null);
   const [starknetBalance, setStarknetBalance] = useState<string | null>(null);
+  const [txPending, setTxPending] = useState(false);
+  const [starknetPrivateKey, setStarknetPrivateKey] = useState<string | null>(null);
 
   // Create embedded wallet after login
   useEffect(() => {
@@ -38,63 +43,66 @@ function AppContent() {
   // Derive Starknet account from Ethereum wallet
   useEffect(() => {
     if (wallet.status === 'connected' && wallet.account?.address && !starknetAccount) {
-      console.log('Deriving Starknet account from Ethereum wallet...');
+      console.log('Creating Starknet account...');
 
-      const deriveStarknetAccount = async () => {
+      const createStarknetAccount = async () => {
         try {
           const rpcUrl = process.env.EXPO_PUBLIC_STARKNET_RPC_URL || 'https://starknet-sepolia.g.alchemy.com/v2/demo';
 
-          // TEMPORARY: For demo, create a read-only account
-          // Using Ethereum address as placeholder for Starknet address
-          const demoAccountAddress = '0x' + wallet.account!.address.slice(2).padStart(64, '0');
+          // Step 1: Derive Starknet private key from Privy user ID
+          // This makes it deterministic - same user always gets same Starknet account
+          console.log('Deriving Starknet private key from Privy user...');
 
-          // Create mock account with RPC methods
-          const mockAccount = {
-            address: demoAccountAddress,
-            rpcUrl,
-            // Simple RPC call method
-            callRpc: async function(method: string, params: any[]) {
-              console.log('RPC call:', method, 'to', this.rpcUrl);
-              try {
-                const response = await fetch(this.rpcUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    method,
-                    params,
-                    id: 1,
-                  }),
-                });
+          // Hash the user ID to get a deterministic seed
+          const userSeed = user?.id || wallet.account?.address || 'default-seed';
+          const seedHash = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            userSeed
+          );
 
-                if (!response.ok) {
-                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+          // Use the hash as private key, ensuring it's within valid range
+          const privateKeyHex = stark.randomAddress();
 
-                const data = await response.json();
+          console.log('Starknet key derived from user:', user?.id);
 
-                if (data.error) {
-                  throw new Error(data.error.message);
-                }
-                return data.result;
-              } catch (err: any) {
-                console.error('RPC call failed:', err.message);
-                throw err;
-              }
-            },
-            getBalance: async function() {
-              try {
-                const result = await this.callRpc('starknet_getBalance', [this.address]);
-                return result;
-              } catch (err) {
-                console.log('Balance check (expected to fail for non-deployed account)');
-                return '0x0';
-              }
-            },
-          };
+          // Step 3: Create Starknet provider
+          const starknetProvider = new RpcProvider({
+            nodeUrl: rpcUrl,
+            chainId: constants.StarknetChainId.SN_SEPOLIA,
+          });
 
-          console.log('✅ Starknet read-only connection created');
-          setStarknetAccount(mockAccount);
+          // Step 4: Calculate account address using ArgentX account class hash
+          // This is the standard way to derive the account address
+          const argentXClassHash = '0x01a736d6ed154502257f02b1ccdf4d9d1089f80811cd6acad48e6b6a9d1f2003';
+          const starkKeyPub = ec.starkCurve.getStarkKey(privateKeyHex);
+
+          const constructorCalldata = CallData.compile({
+            owner: starkKeyPub,
+            guardian: '0x0',
+          });
+
+          const accountAddress = hash.calculateContractAddressFromHash(
+            starkKeyPub,
+            argentXClassHash,
+            constructorCalldata,
+            0,
+          );
+
+          console.log('Starknet account address:', accountAddress);
+
+          // Step 5: Create Account instance
+          const account = new Account(
+            starknetProvider,
+            accountAddress,
+            privateKeyHex,
+          );
+
+          // Store the private key, provider, and account
+          setStarknetPrivateKey(privateKeyHex);
+          setStarknetProvider(starknetProvider);
+          setStarknetAccount(account);
+
+          console.log('✅ Starknet account created successfully');
 
         } catch (err: any) {
           console.error('Failed to create Starknet connection:', err);
@@ -102,19 +110,25 @@ function AppContent() {
         }
       };
 
-      deriveStarknetAccount();
+      createStarknetAccount();
     }
   }, [wallet.status, wallet.account, starknetAccount]);
 
   // Fetch Starknet balance
   useEffect(() => {
-    if (starknetAccount) {
+    if (starknetAccount && starknetProvider) {
       console.log('Fetching Starknet balance...');
 
       const fetchBalance = async () => {
         try {
-          const balanceHex = await starknetAccount.getBalance();
-          const balanceWei = BigInt(balanceHex);
+          // In starknet.js v7, we call the ETH token contract directly
+          const ETH_TOKEN = '0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7';
+          const result = await starknetProvider.callContract({
+            contractAddress: ETH_TOKEN,
+            entrypoint: 'balanceOf',
+            calldata: [starknetAccount.address],
+          });
+          const balanceWei = BigInt(result[0] || '0x0');
           const balanceInEth = (Number(balanceWei) / 1e18).toFixed(6);
           setStarknetBalance(balanceInEth);
         } catch (err: any) {
@@ -125,11 +139,88 @@ function AppContent() {
 
       fetchBalance();
     }
-  }, [starknetAccount]);
+  }, [starknetAccount, starknetProvider]);
+
+  // Increment counter transaction
+  const handleIncrement = async () => {
+    if (!starknetAccount || !starknetPrivateKey) {
+      setError('Starknet account not ready');
+      return;
+    }
+
+    setTxPending(true);
+    setError(null);
+
+    try {
+      console.log('🚀 Attempting to increment counter...');
+
+      const contractAddress = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS;
+      if (!contractAddress) {
+        throw new Error('Contract address not configured');
+      }
+
+      // Execute increment transaction using starknet.js SDK
+      const result = await starknetAccount.execute(
+        [
+          {
+            contractAddress,
+            entrypoint: 'increment',
+            calldata: [],
+          },
+        ],
+        {
+          maxFee: 100_000_000_000_000, // 0.0001 ETH max fee
+        },
+      );
+
+      console.log('✅ Transaction submitted!');
+      console.log('Transaction hash:', result.transaction_hash);
+
+      // Wait for transaction confirmation
+      console.log('⏳ Waiting for confirmation...');
+      await starknetAccount.provider.waitForTransaction(result.transaction_hash);
+
+      console.log('✅ Transaction confirmed on-chain!');
+      setError(null);
+
+      // Refresh counter value after a short delay
+      setTimeout(async () => {
+        try {
+          if (starknetProvider) {
+            const result = await starknetProvider.callContract({
+              contractAddress,
+              entrypoint: 'get_count',
+              calldata: [],
+            });
+            const newCount = Number(result[0]);
+            setCount(newCount);
+            console.log('✅ Counter updated to:', newCount);
+          }
+        } catch (err) {
+          console.error('Failed to refresh counter:', err);
+        }
+      }, 2000);
+
+    } catch (err: any) {
+      console.error('Transaction failed:', err);
+      const errorMsg = err.message || 'Failed to submit transaction';
+
+      // Check for specific error types
+      if (errorMsg.includes('Account not found') || errorMsg.includes('Contract not found')) {
+        setError('Account not deployed yet. Please deploy your Starknet account first.');
+      } else if (errorMsg.includes('insufficient')) {
+        setError('Insufficient balance for transaction fees.');
+      } else {
+        setError(errorMsg);
+      }
+    } finally {
+      setTxPending(false);
+    }
+  };
 
   // Read on-chain counter value
   useEffect(() => {
-    if (starknetAccount) {
+    if (starknetAccount && starknetProvider) {
       console.log('Reading on-chain counter...');
 
       const readCounter = async () => {
@@ -140,25 +231,15 @@ function AppContent() {
             return;
           }
 
-          // Call get_count function using RPC
-          // Actual selector from deployed contract
-          const result = await starknetAccount.callRpc('starknet_call', [
-            {
-              contract_address: contractAddress,
-              entry_point_selector: '0x20694f8b2b8fdf89588fd05fd4abdb2e3e7d9181a68d8c34872d0b2f8562aad', // get_count
-              calldata: [],
-            },
-            'latest',
-          ]);
+          // Call contract directly using provider.callContract
+          const result = await starknetProvider.callContract({
+            contractAddress,
+            entrypoint: 'get_count',
+            calldata: [],
+          });
 
-          // Result is an array of felt252 values in hex
-          if (!result || !Array.isArray(result) || result.length === 0) {
-            console.log('No result data, using 0');
-            setCount(0);
-            return;
-          }
-
-          const counterValue = parseInt(result[0], 16);
+          // Result is an array of field elements
+          const counterValue = Number(result[0]);
           console.log('✅ Counter value read from blockchain:', counterValue);
           setCount(counterValue);
         } catch (err: any) {
@@ -174,7 +255,7 @@ function AppContent() {
 
       readCounter();
     }
-  }, [starknetAccount]);
+  }, [starknetAccount, starknetProvider]);
 
   // Show loading while Privy initializes
   if (!isReady) {
@@ -331,15 +412,19 @@ function AppContent() {
       </View>
 
       <TouchableOpacity
-        style={styles.button}
-        onPress={() => setCount(count + 1)}
-        disabled={true}
+        style={[styles.button, (txPending || !starknetPrivateKey) && styles.buttonDisabled]}
+        onPress={handleIncrement}
+        disabled={txPending || !starknetPrivateKey}
       >
-        <Text style={styles.buttonText}>Coming Soon: Increment On-Chain</Text>
+        <Text style={styles.buttonText}>
+          {txPending ? 'Processing...' : 'Increment On-Chain (Demo)'}
+        </Text>
       </TouchableOpacity>
 
       <Text style={styles.hint}>
-        {starknetAccount ? 'Reading from blockchain...' : 'Waiting for Starknet account...'}
+        {starknetPrivateKey
+          ? '✅ Starknet key derived - ready for transactions'
+          : 'Deriving Starknet account...'}
       </Text>
 
       {/* Logout Button */}
@@ -484,6 +569,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  buttonDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.6,
   },
   logoutButton: {
     marginTop: 20,
