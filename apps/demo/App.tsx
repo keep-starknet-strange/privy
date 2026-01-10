@@ -573,23 +573,16 @@ function AppContent() {
       <View style={styles.walletCard}>
         <Text style={styles.walletLabel}>Ethereum Wallet</Text>
         {(() => {
-          // Try to get address from wallet.account or wallet.address
-          const address = wallet.account?.address || wallet.address;
-          // Otherwise try to get from user's linked_accounts
-          const embeddedWallet = user?.linked_accounts?.find(
-            (account: any) => account.type === 'wallet' && account.wallet_client_type === 'privy'
-          );
-          const displayAddress = address || embeddedWallet?.address;
-
-          return displayAddress ? (
+          const address = wallet.account?.address;
+          return address ? (
             <Text style={styles.walletAddress}>
-              {displayAddress.slice(0, 6)}...{displayAddress.slice(-4)}
+              {address.slice(0, 6)}...{address.slice(-4)}
             </Text>
           ) : (
             <Text style={styles.walletAddress}>Loading...</Text>
           );
         })()}
-        <Text style={styles.walletEmail}>{user?.email?.address || user?.google?.email || 'Logged in'}</Text>
+        <Text style={styles.walletEmail}>{(user as any)?.email?.address || 'Logged in'}</Text>
       </View>
 
       {/* Starknet Info */}
@@ -686,13 +679,10 @@ export default function App() {
       appId={privyAppId}
       clientId={privyClientId}
       config={{
-        appearance: {
-          theme: 'light',
-        },
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
         },
-      }}
+      } as any}
     >
       <AppContent />
     </PrivyProvider>
