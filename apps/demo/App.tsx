@@ -6,13 +6,8 @@ import { StarknetProvider, useStarknet } from '../../packages/privy-starknet-pro
 
 // Main app content (inside Privy provider)
 function AppContent() {
-  console.log('🎯 AppContent rendering');
-
   const { isReady, user, logout } = usePrivy();
   const wallet = useEmbeddedWallet();
-
-  console.log('👤 User state:', { isReady, hasUser: !!user, walletStatus: wallet.status });
-
   const { sendCode, loginWithCode, state } = useLoginWithEmail({
     onError: (error) => {
       console.error('Login error:', error);
@@ -23,8 +18,6 @@ function AppContent() {
       setLoginError(null);
     },
   });
-
-  console.log('🔌 About to call useStarknet...');
 
   // Starknet integration via package hook
   const {
@@ -38,12 +31,6 @@ function AppContent() {
     executeGaslessTransaction,
     provider: starknetProvider,
   } = useStarknet();
-
-  console.log('✅ useStarknet returned:', {
-    hasAddress: !!starknetAddress,
-    hasBalance: !!starknetBalance,
-    hasProvider: !!starknetProvider
-  });
 
   const [count, setCount] = useState(0);
   const [loginError, setLoginError] = useState<string | null>(null);

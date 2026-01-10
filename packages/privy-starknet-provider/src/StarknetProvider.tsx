@@ -29,8 +29,6 @@ interface StarknetProviderProps {
 export function StarknetProvider({ children, config }: StarknetProviderProps) {
   const { user } = usePrivy();
 
-  console.log('🏗️ StarknetProvider render, user:', !!user);
-
   const [account, setAccount] = useState<any>(null);
   const [provider, setProvider] = useState<any>(null);
   const [address, setAddress] = useState<string | null>(null);
@@ -43,13 +41,9 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
 
   // Initialize Starknet account when Privy user is logged in
   useEffect(() => {
-    console.log('🔄 StarknetProvider useEffect fired, user:', !!user);
-
     if (user) {
-      console.log('👤 User exists, calling initialize...');
       initialize();
     } else {
-      console.log('🚫 No user, resetting state...');
       // Reset state when user logs out
       setAccount(null);
       setProvider(null);
@@ -72,45 +66,35 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
   }, [account, provider]);
 
   const initialize = async () => {
-    console.log('🔧 StarknetProvider initialize called');
-
     if (!user || !config.rpcUrl) {
-      console.error('❌ Missing user or RPC URL:', { user: !!user, rpcUrl: !!config.rpcUrl });
       setError('Missing user or RPC URL');
       return;
     }
 
-    console.log('📝 User ID:', user.id);
     setIsInitializing(true);
     setError(null);
 
     try {
-      console.log('1️⃣ Creating Starknet provider...');
       // Create Starknet provider
       const starknetProvider = createStarknetProvider(config.rpcUrl);
 
-      console.log('2️⃣ Deriving private key from user ID...');
       // Derive deterministic private key from Privy user ID
       const userSeed = user.id;
       const derivedPrivateKey = await derivePrivateKey(userSeed);
 
-      console.log('3️⃣ Creating Starknet account...');
       // Create Starknet account
       const starknetAccount = createStarknetAccount(derivedPrivateKey, starknetProvider);
 
-      console.log('4️⃣ Setting state...');
       // Set state
       setProvider(starknetProvider);
       setAccount(starknetAccount);
       setAddress(starknetAccount.address);
       setPrivateKey(derivedPrivateKey);
 
-      console.log('5️⃣ Fetching balances...');
       // Fetch initial balance and deployment status
       const balances = await fetchBalances(starknetProvider, starknetAccount.address);
       setBalance(balances);
 
-      console.log('6️⃣ Checking deployment status...');
       const deploymentStatus = await checkAccountDeployment(
         starknetProvider,
         starknetAccount.address
@@ -118,15 +102,10 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
       setIsDeployed(deploymentStatus.isDeployed);
 
       console.log('✅ Starknet account initialized:', starknetAccount.address);
-      console.log('   Deployed:', deploymentStatus.isDeployed);
-      console.log('   ETH:', balances.eth, 'STRK:', balances.strk);
     } catch (err: any) {
-      console.error('❌ Failed to initialize Starknet account:', err);
-      console.error('   Error message:', err.message);
-      console.error('   Error stack:', err.stack);
+      console.error('Failed to initialize Starknet account:', err);
       setError(err.message || 'Failed to initialize Starknet account');
     } finally {
-      console.log('✅ Initialize complete, setting isInitializing to false');
       setIsInitializing(false);
     }
   };
