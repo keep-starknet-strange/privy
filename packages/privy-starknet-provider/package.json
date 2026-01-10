@@ -1,0 +1,45 @@
+{
+  "name": "@keep-starknet-strange/privy-starknet-provider",
+  "version": "0.1.0",
+  "description": "Starknet wallet provider for React Native apps using Privy authentication and AVNU paymaster",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "starknet",
+    "privy",
+    "wallet",
+    "react-native",
+    "expo",
+    "avnu",
+    "paymaster",
+    "gasless"
+  ],
+  "author": "Keep Starknet Strange",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keep-starknet-strange/privy.git",
+    "directory": "packages/privy-starknet-provider"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.70.0",
+    "expo": ">=49.0.0",
+    "@privy-io/expo": ">=0.63.0"
+  },
+  "dependencies": {
+    "starknet": "^7.4.0",
+    "@avnu/gasless-sdk": "^0.1.8",
+    "@noble/curves": "^1.9.1",
+    "@noble/hashes": "^1.8.0",
+    "expo-crypto": ">=13.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  }
+}
