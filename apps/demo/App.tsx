@@ -4,6 +4,7 @@ import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, TextInput 
 import { PrivyProvider, usePrivy, useLoginWithEmail, useEmbeddedWallet } from '@privy-io/expo';
 import { Account, RpcProvider, constants, ec, hash, CallData, stark } from 'starknet';
 import * as Crypto from 'expo-crypto';
+import { executeCalls, SEPOLIA_BASE_URL, GaslessOptions } from '@avnu/gasless-sdk';
 
 // Main app content (inside Privy provider)
 function AppContent() {
@@ -26,6 +27,7 @@ function AppContent() {
   const [starknetAccount, setStarknetAccount] = useState<any>(null);
   const [starknetProvider, setStarknetProvider] = useState<RpcProvider | null>(null);
   const [starknetBalance, setStarknetBalance] = useState<string | null>(null);
+  const [strkBalance, setStrkBalance] = useState<string | null>(null);
   const [txPending, setTxPending] = useState(false);
   const [starknetPrivateKey, setStarknetPrivateKey] = useState<string | null>(null);
 
@@ -60,8 +62,9 @@ function AppContent() {
             userSeed
           );
 
-          // Use the hash as private key, ensuring it's within valid range
-          const privateKeyHex = stark.randomAddress();
+          // Use the hash as private key (deterministic!)
+          // Take first 63 hex chars (252 bits) to ensure it's within valid Stark curve range
+          const privateKeyHex = '0x' + seedHash.slice(2, 65);
 
           console.log('Starknet key derived from user:', user?.id);
 
@@ -114,32 +117,101 @@ function AppContent() {
     }
   }, [wallet.status, wallet.account, starknetAccount]);
 
-  // Fetch Starknet balance
+  // Fetch Starknet balances (ETH and STRK)
   useEffect(() => {
     if (starknetAccount && starknetProvider) {
-      console.log('Fetching Starknet balance...');
+      console.log('Fetching Starknet balances...');
 
-      const fetchBalance = async () => {
+      const fetchBalances = async () => {
         try {
-          // In starknet.js v7, we call the ETH token contract directly
+          // ETH token contract
           const ETH_TOKEN = '0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7';
-          const result = await starknetProvider.callContract({
+          const ethResult = await starknetProvider.callContract({
             contractAddress: ETH_TOKEN,
             entrypoint: 'balanceOf',
             calldata: [starknetAccount.address],
           });
-          const balanceWei = BigInt(result[0] || '0x0');
-          const balanceInEth = (Number(balanceWei) / 1e18).toFixed(6);
-          setStarknetBalance(balanceInEth);
+          const ethBalanceWei = BigInt(ethResult[0] || '0x0');
+          const ethBalance = (Number(ethBalanceWei) / 1e18).toFixed(6);
+          setStarknetBalance(ethBalance);
+
+          // STRK token contract
+          const STRK_TOKEN = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d';
+          const strkResult = await starknetProvider.callContract({
+            contractAddress: STRK_TOKEN,
+            entrypoint: 'balanceOf',
+            calldata: [starknetAccount.address],
+          });
+          const strkBalanceWei = BigInt(strkResult[0] || '0x0');
+          const strkBalance = (Number(strkBalanceWei) / 1e18).toFixed(6);
+          setStrkBalance(strkBalance);
         } catch (err: any) {
-          console.error('Failed to fetch balance:', err);
+          console.error('Failed to fetch balances:', err);
           setStarknetBalance('0.000000');
+          setStrkBalance('0.000000');
         }
       };
 
-      fetchBalance();
+      fetchBalances();
     }
   }, [starknetAccount, starknetProvider]);
+
+  // Deploy account
+  const handleDeployAccount = async () => {
+    if (!starknetAccount || !starknetPrivateKey) {
+      setError('Starknet account not ready');
+      return;
+    }
+
+    setTxPending(true);
+    setError(null);
+
+    try {
+      console.log('🚀 Deploying Starknet account...');
+
+      const argentXClassHash = '0x01a736d6ed154502257f02b1ccdf4d9d1089f80811cd6acad48e6b6a9d1f2003';
+      const starkKeyPub = ec.starkCurve.getStarkKey(starknetPrivateKey);
+      const constructorCalldata = CallData.compile({
+        owner: starkKeyPub,
+        guardian: '0x0',
+      });
+
+      const { transaction_hash } = await starknetAccount.deployAccount(
+        {
+          classHash: argentXClassHash,
+          constructorCalldata,
+          addressSalt: starkKeyPub,
+          contractAddress: starknetAccount.address,
+        },
+        {
+          maxFee: 100_000_000_000_000_000, // Higher max fee for STRK
+          version: 3, // Use v3 transaction for STRK gas payment
+        }
+      );
+
+      console.log('✅ Account deployment submitted!');
+      console.log('Transaction hash:', transaction_hash);
+
+      // Wait for deployment confirmation
+      console.log('⏳ Waiting for deployment confirmation...');
+      await starknetProvider!.waitForTransaction(transaction_hash);
+
+      console.log('✅ Account deployed successfully!');
+      setError('✅ Account deployed! You can now send transactions.');
+
+    } catch (err: any) {
+      console.error('Account deployment failed:', err);
+      const errorMsg = err.message || 'Failed to deploy account';
+
+      if (errorMsg.includes('insufficient')) {
+        setError('Insufficient balance. Need ETH for deployment fees.');
+      } else {
+        setError('Deployment failed: ' + errorMsg);
+      }
+    } finally {
+      setTxPending(false);
+    }
+  };
 
   // Increment counter transaction
   const handleIncrement = async () => {
@@ -178,7 +250,7 @@ function AppContent() {
 
       // Wait for transaction confirmation
       console.log('⏳ Waiting for confirmation...');
-      await starknetAccount.provider.waitForTransaction(result.transaction_hash);
+      await starknetProvider!.waitForTransaction(result.transaction_hash);
 
       console.log('✅ Transaction confirmed on-chain!');
       setError(null);
@@ -210,6 +282,133 @@ function AppContent() {
         setError('Account not deployed yet. Please deploy your Starknet account first.');
       } else if (errorMsg.includes('insufficient')) {
         setError('Insufficient balance for transaction fees.');
+      } else {
+        setError(errorMsg);
+      }
+    } finally {
+      setTxPending(false);
+    }
+  };
+
+  // Increment counter using AVNU Paymaster (gasless)
+  const handleIncrementGasless = async () => {
+    if (!starknetAccount || !starknetPrivateKey) {
+      setError('Starknet account not ready');
+      return;
+    }
+
+    setTxPending(true);
+    setError(null);
+
+    try {
+      console.log('🚀 Attempting gasless increment with AVNU paymaster...');
+
+      const contractAddress = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS;
+      if (!contractAddress) {
+        throw new Error('Contract address not configured');
+      }
+
+      const avnuApiKey = process.env.EXPO_PUBLIC_AVNU_API_KEY;
+      if (!avnuApiKey) {
+        throw new Error('AVNU API key not configured');
+      }
+
+      // Build the calls array
+      const calls = [
+        {
+          contractAddress,
+          entrypoint: 'increment',
+          calldata: [],
+        },
+      ];
+
+      // Check if account is deployed
+      let deploymentData;
+      try {
+        await starknetProvider!.getClassHashAt(starknetAccount.address);
+        console.log('✅ Account already deployed');
+      } catch (err) {
+        console.log('⚠️ Account not deployed, preparing deployment data...');
+
+        // Prepare deployment data for AVNU paymaster to deploy the account
+        const argentXClassHash = '0x01a736d6ed154502257f02b1ccdf4d9d1089f80811cd6acad48e6b6a9d1f2003';
+        const starkKeyPub = ec.starkCurve.getStarkKey(starknetPrivateKey);
+
+        // For ArgentX, calldata is simply [owner, guardian] in hex format
+        deploymentData = {
+          class_hash: argentXClassHash,
+          salt: starkKeyPub,
+          unique: '0x0',
+          calldata: [starkKeyPub, '0x0'],
+        };
+
+        console.log('📦 Deployment data prepared - paymaster will deploy account');
+      }
+
+      // Configure AVNU gasless options
+      const gaslessOptions: GaslessOptions = {
+        baseUrl: SEPOLIA_BASE_URL,
+        customHeaders: {
+          'x-api-key': avnuApiKey,
+        },
+      };
+
+      // Execute gasless transaction
+      console.log('📡 Calling AVNU paymaster...');
+
+      // STRK token address for gas payment
+      const STRK_TOKEN = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d';
+
+      const result = await executeCalls(
+        starknetAccount,
+        calls,
+        {
+          gasTokenAddress: deploymentData ? undefined : STRK_TOKEN,
+          maxGasTokenAmount: deploymentData ? undefined : BigInt(100_000_000_000_000_000), // 0.1 STRK max
+          deploymentData,
+        },
+        gaslessOptions
+      );
+
+      console.log('✅ Gasless transaction submitted!');
+      console.log('Transaction hash:', result.transactionHash);
+
+      // Wait for transaction confirmation
+      console.log('⏳ Waiting for confirmation...');
+      await starknetProvider!.waitForTransaction(result.transactionHash);
+
+      console.log('✅ Gasless transaction confirmed on-chain!');
+      setError(null);
+
+      // Refresh counter value after a short delay
+      setTimeout(async () => {
+        try {
+          if (starknetProvider) {
+            const result = await starknetProvider.callContract({
+              contractAddress,
+              entrypoint: 'get_count',
+              calldata: [],
+            });
+            const newCount = Number(result[0]);
+            setCount(newCount);
+            console.log('✅ Counter updated to:', newCount);
+          }
+        } catch (err) {
+          console.error('Failed to refresh counter:', err);
+        }
+      }, 2000);
+
+    } catch (err: any) {
+      console.error('Gasless transaction failed:', err);
+      const errorMsg = err.message || 'Failed to submit gasless transaction';
+
+      // Check for specific error types
+      if (errorMsg.includes('401')) {
+        setError('⚠️ AVNU API key invalid or requires authorization. Contact AVNU team for API access at https://docs.avnu.fi. Use "Increment (Pay Gas)" instead.');
+      } else if (errorMsg.includes('not compatible')) {
+        setError('Account not compatible with gasless transactions.');
+      } else if (errorMsg.includes('AVNU') || errorMsg.includes('paymaster')) {
+        setError('AVNU Paymaster error: ' + errorMsg);
       } else {
         setError(errorMsg);
       }
@@ -401,7 +600,10 @@ function AppContent() {
             {starknetAccount.address.slice(0, 6)}...{starknetAccount.address.slice(-4)}
           </Text>
           <Text style={styles.walletEmail}>
-            Balance: {starknetBalance || 'Loading...'} ETH
+            ETH: {starknetBalance || 'Loading...'}
+          </Text>
+          <Text style={styles.walletEmail}>
+            STRK: {strkBalance || 'Loading...'}
           </Text>
         </View>
       )}
@@ -412,12 +614,32 @@ function AppContent() {
       </View>
 
       <TouchableOpacity
+        style={[styles.deployButton, (txPending || !starknetPrivateKey) && styles.buttonDisabled]}
+        onPress={handleDeployAccount}
+        disabled={txPending || !starknetPrivateKey}
+      >
+        <Text style={styles.buttonText}>
+          {txPending ? 'Processing...' : '🚀 Deploy Account'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={[styles.button, (txPending || !starknetPrivateKey) && styles.buttonDisabled]}
         onPress={handleIncrement}
         disabled={txPending || !starknetPrivateKey}
       >
         <Text style={styles.buttonText}>
-          {txPending ? 'Processing...' : 'Increment On-Chain (Demo)'}
+          {txPending ? 'Processing...' : 'Increment (Pay Gas)'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.buttonGasless, (txPending || !starknetPrivateKey) && styles.buttonDisabled]}
+        onPress={handleIncrementGasless}
+        disabled={txPending || !starknetPrivateKey}
+      >
+        <Text style={styles.buttonText}>
+          {txPending ? 'Processing...' : '⚡ Increment (Gasless)'}
         </Text>
       </TouchableOpacity>
 
@@ -552,6 +774,36 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#4A90E2',
+    paddingHorizontal: 40,
+    paddingVertical: 15,
+    borderRadius: 25,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  buttonGasless: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 40,
+    paddingVertical: 15,
+    borderRadius: 25,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  deployButton: {
+    backgroundColor: '#F59E0B',
     paddingHorizontal: 40,
     paddingVertical: 15,
     borderRadius: 25,
