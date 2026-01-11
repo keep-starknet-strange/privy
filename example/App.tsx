@@ -27,7 +27,6 @@ function AppContent() {
     txPending,
     error: starknetError,
     deployAccount,
-    executeTransaction,
     executeGaslessTransaction,
     provider: starknetProvider,
   } = useStarknet();
@@ -53,28 +52,6 @@ function AppContent() {
     const result = await deployAccount();
     if (result.success) {
       console.log('✅ Account deployed!', result.transactionHash);
-    }
-  };
-
-  // Increment counter transaction (regular - user pays gas)
-  const handleIncrement = async () => {
-    const contractAddress = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS;
-    if (!contractAddress) {
-      return;
-    }
-
-    const result = await executeTransaction([
-      {
-        contractAddress,
-        entrypoint: 'increment',
-        calldata: [],
-      },
-    ]);
-
-    if (result.success) {
-      console.log('✅ Transaction confirmed!');
-      // Refresh counter after delay
-      setTimeout(() => refreshCounter(), 2000);
     }
   };
 
@@ -295,17 +272,6 @@ function AppContent() {
           {txPending ? 'Processing...' : '🚀 Deploy Account'}
         </Text>
       </TouchableOpacity>
-
-      {/* Regular transactions disabled - starknet.js 6.x doesn't support v3 transactions properly */}
-      {/* <TouchableOpacity
-        style={[styles.button, (txPending || !starknetAddress) && styles.buttonDisabled]}
-        onPress={handleIncrement}
-        disabled={txPending || !starknetAddress}
-      >
-        <Text style={styles.buttonText}>
-          {txPending ? 'Processing...' : 'Increment (Pay Gas)'}
-        </Text>
-      </TouchableOpacity> */}
 
       <TouchableOpacity
         style={[styles.buttonGasless, (txPending || !starknetAddress) && styles.buttonDisabled]}

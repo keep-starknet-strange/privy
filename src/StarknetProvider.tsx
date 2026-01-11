@@ -100,8 +100,6 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
         starknetAccount.address
       );
       setIsDeployed(deploymentStatus.isDeployed);
-
-      console.log('✅ Starknet account initialized:', starknetAccount.address);
     } catch (err: any) {
       console.error('Failed to initialize Starknet account:', err);
       setError(err.message || 'Failed to initialize Starknet account');
@@ -165,38 +163,6 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
     }
   };
 
-  const executeTransaction = async (calls: any[]): Promise<TransactionResult> => {
-    if (!account || !provider) {
-      return { transactionHash: '', success: false, error: 'Account not initialized' };
-    }
-
-    setTxPending(true);
-    setError(null);
-
-    try {
-      console.log('🚀 Executing transaction...');
-
-      // Try to execute with auto fee estimation
-      const result = await account.execute(calls);
-
-      console.log('📡 Waiting for transaction confirmation...');
-      await provider.waitForTransaction(result.transaction_hash);
-
-      console.log('✅ Transaction confirmed!');
-
-      // Refresh balance after transaction
-      await refreshBalance();
-
-      return { transactionHash: result.transaction_hash, success: true };
-    } catch (err: any) {
-      const errorMsg = err.message || 'Transaction failed';
-      console.error('Transaction error:', errorMsg);
-      setError(errorMsg);
-      return { transactionHash: '', success: false, error: errorMsg };
-    } finally {
-      setTxPending(false);
-    }
-  };
 
   const executeGaslessTransaction = async (calls: any[]): Promise<TransactionResult> => {
     if (!account || !provider || !privateKey || !config.avnuApiKey) {
@@ -280,7 +246,6 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
     initialize,
     refreshBalance,
     deployAccount,
-    executeTransaction,
     executeGaslessTransaction,
     clearError,
   };

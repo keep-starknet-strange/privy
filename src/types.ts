@@ -78,8 +78,6 @@ export interface StarknetContextActions {
   refreshBalance: () => Promise<void>;
   /** Deploy the Starknet account on-chain */
   deployAccount: () => Promise<TransactionResult>;
-  /** Execute a regular transaction (user pays gas) */
-  executeTransaction: (calls: any[]) => Promise<TransactionResult>;
   /** Execute a gasless transaction (AVNU sponsors gas) */
   executeGaslessTransaction: (calls: any[]) => Promise<TransactionResult>;
   /** Reset error state */
