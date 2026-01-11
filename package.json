@@ -1,32 +1,55 @@
 {
-  "name": "privy-starknet-demo",
-  "version": "1.0.0",
-  "description": "React Native demo showcasing Starknet integration with Privy wallets and AVNU gasless transactions",
-  "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "name": "@keep-starknet-strange/privy-starknet-provider",
+  "version": "0.1.0",
+  "description": "Starknet wallet provider for React Native apps using Privy authentication and AVNU paymaster",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "demo": "cd apps/demo && npm start",
-    "demo:ios": "cd apps/demo && expo run ios --device",
-    "demo:android": "cd apps/demo && expo run:android --device",
-    "wallet:build": "cd packages/starknet-privy-wallet && npm run build",
-    "wallet:test": "cd packages/starknet-privy-wallet && npm test",
-    "contract:build": "cd contracts && scarb build",
-    "contract:test": "cd contracts && scarb test",
-    "contract:deploy": "cd contracts && npm run deploy:sepolia"
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "example": "cd example && npm start",
+    "example:ios": "cd example && npx expo run:ios --device",
+    "example:android": "cd example && npx expo run:android --device"
   },
   "keywords": [
-    "react-native",
     "starknet",
     "privy",
-    "blockchain",
-    "web3",
     "wallet",
+    "react-native",
+    "expo",
     "avnu",
-    "paymaster"
+    "paymaster",
+    "gasless",
+    "blockchain",
+    "web3"
   ],
-  "author": "",
-  "license": "MIT"
+  "author": "Keep Starknet Strange",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keep-starknet-strange/privy.git"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.70.0",
+    "expo": ">=49.0.0",
+    "@privy-io/expo": ">=0.63.0",
+    "expo-crypto": ">=13.0.0"
+  },
+  "dependencies": {
+    "starknet": "^6.11.0",
+    "@avnu/gasless-sdk": "^0.1.8",
+    "@noble/curves": "^1.9.1",
+    "@noble/hashes": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ]
 }

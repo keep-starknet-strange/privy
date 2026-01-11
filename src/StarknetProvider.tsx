@@ -138,18 +138,12 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
         guardian: '0x0',
       });
 
-      const { transaction_hash } = await account.deployAccount(
-        {
-          classHash: ARGENTX_CLASS_HASH,
-          constructorCalldata,
-          addressSalt: starkKeyPub,
-          contractAddress: account.address,
-        },
-        {
-          maxFee: 100_000_000_000_000_000,
-          version: 3, // Use v3 transaction for STRK gas payment
-        }
-      );
+      const { transaction_hash } = await account.deployAccount({
+        classHash: ARGENTX_CLASS_HASH,
+        constructorCalldata,
+        addressSalt: starkKeyPub,
+        contractAddress: account.address,
+      });
 
       console.log('📡 Waiting for deployment confirmation...');
       await provider.waitForTransaction(transaction_hash);
@@ -182,9 +176,8 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
     try {
       console.log('🚀 Executing transaction...');
 
-      const result = await account.execute(calls, {
-        maxFee: 100_000_000_000_000,
-      });
+      // Try to execute with auto fee estimation
+      const result = await account.execute(calls);
 
       console.log('📡 Waiting for transaction confirmation...');
       await provider.waitForTransaction(result.transaction_hash);

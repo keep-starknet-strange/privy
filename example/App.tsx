@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { PrivyProvider, usePrivy, useLoginWithEmail, useEmbeddedWallet } from '@privy-io/expo';
-import { StarknetProvider, useStarknet } from '../../packages/privy-starknet-provider/src';
+import { StarknetProvider, useStarknet } from '@keep-starknet-strange/privy-starknet-provider';
 
 // Main app content (inside Privy provider)
 function AppContent() {
@@ -296,7 +296,8 @@ function AppContent() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
+      {/* Regular transactions disabled - starknet.js 6.x doesn't support v3 transactions properly */}
+      {/* <TouchableOpacity
         style={[styles.button, (txPending || !starknetAddress) && styles.buttonDisabled]}
         onPress={handleIncrement}
         disabled={txPending || !starknetAddress}
@@ -304,7 +305,7 @@ function AppContent() {
         <Text style={styles.buttonText}>
           {txPending ? 'Processing...' : 'Increment (Pay Gas)'}
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       <TouchableOpacity
         style={[styles.buttonGasless, (txPending || !starknetAddress) && styles.buttonDisabled]}

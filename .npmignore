@@ -1,0 +1,42 @@
+# Example app
+example/
+
+# Development files
+apps/
+packages/
+contracts/
+docs/
+scripts/
+
+# Documentation (keep README.md for npm)
+CLAUDE.md
+IMPLEMENTATION_ORDER.md
+IMPROVEMENTS_APPLIED.md
+PROJECT_PLAN.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# macOS
+.DS_Store
+
+# Build artifacts (keep dist/ for npm)
+*.log
+node_modules/
+
+# Test files
+*.test.ts
+*.test.tsx
+__tests__/
+
+# Config files
+tsconfig.json
+package-lock.json
+package_lib.json
+README_LIB.md
