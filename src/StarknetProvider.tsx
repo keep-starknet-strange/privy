@@ -1,7 +1,6 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { usePrivy } from '@privy-io/expo';
-import { executeCalls, SEPOLIA_BASE_URL, GaslessOptions } from '@avnu/gasless-sdk';
-import { ec, CallData } from 'starknet';
+import { ec, CallData, PaymasterOptions, Account } from 'starknet';
 import type {
   StarknetContext,
   StarknetProviderConfig,
@@ -16,7 +15,6 @@ import {
   checkAccountDeployment,
   generateDeploymentData,
   ARGENTX_CLASS_HASH,
-  STRK_TOKEN_ADDRESS,
 } from './utils';
 
 export const StarknetContext = createContext<StarknetContext | null>(null);
@@ -165,11 +163,19 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
 
 
   const executeGaslessTransaction = async (calls: any[]): Promise<TransactionResult> => {
-    if (!account || !provider || !privateKey || !config.avnuApiKey) {
+    if (!account || !provider || !privateKey) {
       return {
         transactionHash: '',
         success: false,
-        error: 'Account not initialized or AVNU API key missing',
+        error: 'Account not initialized',
+      };
+    }
+
+    if (!config.avnuApiKey) {
+      return {
+        transactionHash: '',
+        success: false,
+        error: 'AVNU API key is required. Please add EXPO_PUBLIC_AVNU_API_KEY to your .env file.',
       };
     }
 
@@ -177,50 +183,88 @@ export function StarknetProvider({ children, config }: StarknetProviderProps) {
     setError(null);
 
     try {
-      console.log('🚀 Executing gasless transaction with AVNU...');
+      console.log('🚀 Executing gasless transaction with AVNU Paymaster...');
+      console.log('Account address:', account.address);
 
       // Check if account is deployed
       const deploymentStatus = await checkAccountDeployment(provider, account.address);
-      const deploymentData = deploymentStatus.isDeployed
-        ? undefined
-        : generateDeploymentData(privateKey);
+      console.log('Account deployed:', deploymentStatus.isDeployed);
 
-      // Configure AVNU gasless options
-      const gaslessOptions: GaslessOptions = {
-        baseUrl: SEPOLIA_BASE_URL,
-        customHeaders: {
-          'x-api-key': config.avnuApiKey,
+      // Create account with paymaster configured
+      const paymasterOptions: PaymasterOptions = {
+        nodeUrl: 'https://sepolia.paymaster.avnu.fi',
+        headers: {
+          'x-paymaster-api-key': config.avnuApiKey,
         },
       };
 
-      // Execute gasless transaction
-      const result = await executeCalls(
-        account,
+      // Create new account instance with paymaster
+      const paymasterAccount = new Account({
+        provider,
+        address: account.address,
+        signer: privateKey,
+        paymaster: paymasterOptions,
+      });
+
+      // Prepare paymaster details
+      // Use 'sponsored' mode so paymaster pays for all gas fees
+      const paymasterDetails: any = {
+        feeMode: { mode: 'sponsored' },
+      };
+
+      if (!deploymentStatus.isDeployed) {
+        const deploymentData = generateDeploymentData(privateKey);
+        paymasterDetails.deploymentData = {
+          address: account.address,
+          class_hash: deploymentData.class_hash,
+          salt: deploymentData.salt,
+          unique: deploymentData.unique,
+          calldata: deploymentData.calldata,
+          version: 1,
+        };
+        console.log('Including deployment data for undeployed account (sponsored mode)');
+      }
+
+      console.log('Estimating fees with paymaster...');
+      const estimatedFees = await paymasterAccount.estimatePaymasterTransactionFee(calls, paymasterDetails);
+      console.log('Estimated fees:', estimatedFees);
+
+      console.log('Executing transaction...');
+      const result = await paymasterAccount.executePaymasterTransaction(
         calls,
-        {
-          gasTokenAddress: deploymentData ? undefined : STRK_TOKEN_ADDRESS,
-          maxGasTokenAmount: deploymentData ? undefined : BigInt(100_000_000_000_000_000),
-          deploymentData,
-        },
-        gaslessOptions
+        paymasterDetails,
+        estimatedFees.suggested_max_fee_in_gas_token
       );
 
-      console.log('📡 Waiting for gasless transaction confirmation...');
-      await provider.waitForTransaction(result.transactionHash);
+      console.log('📡 Waiting for transaction confirmation...');
+      await provider.waitForTransaction(result.transaction_hash);
 
       console.log('✅ Gasless transaction confirmed!');
 
-      // Update deployment status if this was a deployment
-      if (deploymentData) {
+      // Update deployment status if account wasn't deployed
+      if (!deploymentStatus.isDeployed) {
         setIsDeployed(true);
       }
 
       // Refresh balance after transaction
       await refreshBalance();
 
-      return { transactionHash: result.transactionHash, success: true };
+      return { transactionHash: result.transaction_hash, success: true };
     } catch (err: any) {
-      const errorMsg = err.message || 'Gasless transaction failed';
+      console.error('Paymaster error:', err);
+      console.error('Error message:', err.message);
+
+      let errorMsg = err.message || 'Gasless transaction failed';
+
+      // Provide helpful error messages
+      if (errorMsg.includes('401')) {
+        errorMsg = 'AVNU API key is invalid or expired. Get a new key at https://docs.avnu.fi';
+      } else if (errorMsg.includes('403')) {
+        errorMsg = 'AVNU API key does not have permission for paymaster transactions';
+      } else if (errorMsg.includes('429')) {
+        errorMsg = 'AVNU rate limit exceeded. Please try again later.';
+      }
+
       console.error('Gasless transaction error:', errorMsg);
       setError(errorMsg);
       return { transactionHash: '', success: false, error: errorMsg };

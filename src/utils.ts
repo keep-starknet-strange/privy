@@ -48,7 +48,11 @@ export function createStarknetAccount(
     0
   );
 
-  return new Account(provider, accountAddress, privateKey);
+  return new Account({
+    provider,
+    address: accountAddress,
+    signer: privateKey,
+  });
 }
 
 /**

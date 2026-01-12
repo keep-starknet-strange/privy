@@ -37,8 +37,7 @@
     "expo-crypto": ">=13.0.0"
   },
   "dependencies": {
-    "starknet": "^6.11.0",
-    "@avnu/gasless-sdk": "^0.1.8",
+    "starknet": "^9.2.1",
     "@noble/curves": "^1.9.1",
     "@noble/hashes": "^1.8.0"
   },
