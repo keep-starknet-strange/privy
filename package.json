@@ -1,6 +1,6 @@
 {
   "name": "@keep-starknet-strange/privy-starknet-provider",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Starknet wallet provider for React Native apps using Privy authentication and AVNU paymaster",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
