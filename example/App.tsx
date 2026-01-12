@@ -39,8 +39,11 @@ function AppContent() {
   // Create embedded wallet after login
   useEffect(() => {
     if (user && wallet.status === 'not-created') {
-      console.log('Creating embedded wallet...');
       wallet.create().catch((err) => {
+        // Ignore error if wallet already exists (returning user)
+        if (err.message && err.message.includes('already has an embedded wallet')) {
+          return;
+        }
         console.error('Failed to create wallet:', err);
         setLoginError('Failed to create wallet: ' + err.message);
       });
