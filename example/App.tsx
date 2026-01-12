@@ -50,14 +50,6 @@ function AppContent() {
     }
   }, [user, wallet.status]);
 
-  // Deploy account handler
-  const handleDeployAccount = async () => {
-    const result = await deployAccount();
-    if (result.success) {
-      console.log('✅ Account deployed!', result.transactionHash);
-    }
-  };
-
   // Increment counter using AVNU Paymaster (gasless)
   const handleIncrementGasless = async () => {
     const contractAddress = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS;
@@ -267,16 +259,6 @@ function AppContent() {
       </View>
 
       <TouchableOpacity
-        style={[styles.deployButton, (txPending || !starknetAddress) && styles.buttonDisabled]}
-        onPress={handleDeployAccount}
-        disabled={txPending || !starknetAddress}
-      >
-        <Text style={styles.buttonText}>
-          {txPending ? 'Processing...' : '🚀 Deploy Account'}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
         style={[styles.buttonGasless, (txPending || !starknetAddress) && styles.buttonDisabled]}
         onPress={handleIncrementGasless}
         disabled={txPending || !starknetAddress}
@@ -288,7 +270,9 @@ function AppContent() {
 
       <Text style={styles.hint}>
         {starknetAddress
-          ? `✅ Starknet account ${isDeployed ? 'deployed' : 'ready (not deployed)'}`
+          ? isDeployed
+            ? '✅ Account deployed and ready'
+            : '💡 Your account will be deployed automatically with your first transaction'
           : 'Initializing Starknet account...'}
       </Text>
 
